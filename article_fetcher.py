@@ -1,20 +1,34 @@
+from collections import namedtuple
 from newspaper import Article
 import psycopg2
 
 QUERY_STRING = """
 INSERT INTO articles_usmarkets
-(authors,published_date,title,article)
-VALUES (%s,%s,%s,%s)
+(feedly_id,authors,published_date,title,article)
+VALUES (%s,%s,%s,%s,%s)
 """
+
+GET_MISSING_ARTICLES = """
+SELECT A.feedly_id,A.href FROM
+reuters_usmarkets A 
+LEFT JOIN
+articles_usmarkets B
+ON A.feedly_id = B.feedly_id
+WHERE B.feedly_id IS NULL;
+"""
+
+Reuters = namedtuple('Reuters','feedly_id href')
 
 conn = psycopg2.connect("dbname=TBM")
 cur = conn.cursor()
-cur.execute("SELECT href from reuters_usmarkets")
-records = cur.fetchmany(2)
+cur.execute(GET_MISSING_ARTICLES)
+
+records = cur.fetchmany(100)
 
 for record in records:
-    url = record[0]
-    article = Article(url)
+    record = Reuters(*record)
+    article = Article(record.href)
+    
     article.download()
     article.parse()
 
@@ -23,10 +37,8 @@ for record in records:
     title = article.title
     content = article.text
 
-    # print((authors,published_date,title,content)) 
-
     cur.execute(QUERY_STRING, \
-                (authors,published_date,title,content))
+                (record.feedly_id,authors,published_date,title,content))
 
 conn.commit()
 print("DONE")
