@@ -23,9 +23,14 @@ conn = psycopg2.connect("dbname=TBM")
 cur = conn.cursor()
 cur.execute(GET_MISSING_ARTICLES)
 
-records = cur.fetchmany(100)
+records = cur.fetchmany(793)
 
-for record in records:
+# TODO
+# Learning is not optimal:
+# 1. City reporting is in <span class="article">SHANGHAI</class>
+# 2. Date is not complete when converted to db form (psycopg2 side)
+# 3. Authors are not correctly reported 
+for record in records:          # TODO Can be made parallel.
     record = Reuters(*record)
     article = Article(record.href)
     
