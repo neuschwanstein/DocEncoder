@@ -28,7 +28,7 @@ VALUES (%s,%s,%s,%s,%s)
 """
 
 select_article_query = """
-SELECT {} FROM articles_usmarkets LIMIT {}""".format(' '.join(Article._fields), "{}")
+SELECT {} FROM articles_usmarkets LIMIT {}""".format(','.join(Article._fields), "{}")
 
 conn = psycopg2.connect("dbname=TBM")
 cur = conn.cursor()
@@ -37,7 +37,7 @@ class Fetch:
     def __init__(self, count="ALL"):
         batch_size = 25
         self.batch_size = batch_size
-        cur.execute("SELECT * FROM articles_usmarkets LIMIT {}".format(count))
+        cur.execute(select_article_query.format(count))
         self.records = []
 
     def __iter__(self):
@@ -99,22 +99,31 @@ def parse(url):
         pars = pars[:-1]
 
     article_text = "\n\n".join(pars)
-        
+
     article = { 'location': location, 'date': date, 'title': title, 'content': article_text }
     return article
 
-def parse_and_insert(count=25):
+def add_missing(count=25):
     global missing
     missings = missing(count)
     articles = []
-    for missing in missings:
-        article = parse(missing.url)
+    for i,missing in enumerate(missings):
+        print("Parsing {} out of {}".format(i+1,count))
+        try:
+            article = parse(missing.url)
+        except:
+            print('Error! {}'.format(missing.url))
+            continue
         article['feedly_id'] = missing.feedly_id
         article = Article(**article)
         articles.append(article)
-        
+
+    print("Inserting...")
     insert(articles)
-        
+    print("Done.")
+
+def test():
+    parse_and_insert(1)        
 
 def close():
     conn.close()
