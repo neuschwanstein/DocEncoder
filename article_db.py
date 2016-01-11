@@ -92,7 +92,8 @@ def parse(url):
     if pars[0].startswith(location + ' '):
         pars[0] = pars[0].replace(location + ' ','', 1) # at most once
 
-        pars[0] = re.sub(r'\w{3} \d{2} ','',pars[0])
+    # Remove redundant date
+    pars[0] = re.sub(r'\w{3} \d{2} ','',pars[0])
 
     last_par = pars[-1]
     if last_par[0] == '(' and last_par[-1] == ')':
@@ -100,8 +101,7 @@ def parse(url):
 
     article_text = "\n\n".join(pars)
 
-    article = { 'location': location, 'date': date, 'title': title, 'content': article_text }
-    return article
+    return { 'location': location, 'date': date, 'title': title, 'content': article_text }
 
 def add_missing(count=25):
     global missing
