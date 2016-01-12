@@ -44,49 +44,52 @@ def stochastic_batch(k_around, batch_size=1):
     return t_par, t_c, t_ws
     
 
-q_word = 50
-q_par = 150
+# q_word = 50
+# q_par = 150
 
-t_c = tf.placeholder(tf.float32, shape=[T_word,1], name='t_c')       # 1-hot vector for central word
-t_ws = tf.placeholder(tf.float32, shape=[T_word,None], name='t_ws') # 1-hot matrix for words
-t_par = tf.placeholder(tf.float32, shape=[T_par,1], name='t_par')      # 1-hot vector for pars
+def full_softmax_classifier(q_word,q_par):
 
-# t_c = tf.reshape(t_c, [T_word,1])
-# t_par = tf.reshape(t_par, [T_par,1])
+    t_c = tf.placeholder(tf.float32, shape=[T_word,1], name='t_c')       # 1-hot vector for central word
+    t_ws = tf.placeholder(tf.float32, shape=[T_word,None], name='t_ws') # 1-hot matrix for words
+    t_par = tf.placeholder(tf.float32, shape=[T_par,1], name='t_par')      # 1-hot vector for pars
+    
+    # NPLM parameters
+    W = tf.Variable(tf.random_uniform([q_word,T_word], -1.0, 1.0))
+    D = tf.Variable(tf.random_uniform([q_par,T_par], -1.0, 1.0))
+    
+    # Context vectors 
+    h_word = tf.matmul(W,t_ws)
+    h_word = tf.reduce_mean(h_word,1) # Take the average of context words.
+    h_par = tf.matmul(D,t_par)
+    h_par = tf.reshape(h_par,[q_par])
+    h = tf.concat(0,[h_word,h_par])
+    
+    # Softmax sizes
+    p = q_word + q_par
+    T = T_word
+    
+    h = tf.reshape(h,[p,1])
+    
+    # Softmax parameters
+    U = tf.Variable(tf.zeros([T, p]))
+    b = tf.Variable(tf.zeros([T,1]))
+    
+    y = tf.nn.softmax(b + tf.matmul(U,h))
+    cost = -tf.reduce_sum(t_c * tf.log(y))
+    
+    train = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
 
-# NPLM parameters
-W = tf.Variable(tf.random_uniform([q_word,T_word], -1.0, 1.0))
-D = tf.Variable(tf.random_uniform([q_par,T_par], -1.0, 1.0))
+    init = tf.initialize_all_variables()
+    sess = tf.Session()
+    sess.run(init)
 
-# Context vectors 
-h_word = tf.matmul(W,t_ws)
-h_word = tf.reduce_mean(h_word,1) # Take the average of context words.
-h_par = tf.matmul(D,t_par)
-h_par = tf.reshape(h_par,[q_par])
-h = tf.concat(0,[h_word,h_par])
+    for i in range(100):
+        batch_t_par, batch_t_c, batch_t_ws = stochastic_batch(3)
+        feed_dict = { t_par: batch_t_par, t_c: batch_t_c, t_ws: batch_t_ws }
+        # sess.run(train, feed_dict)
+        sess.run(h, feed_dict)
 
-# Softmax sizes
-p = q_word + q_par
-T = T_word
+    print("Done.")
+    return sess.run(D)
 
-h = tf.reshape(h,[p,1])
-
-# Softmax parameters
-U = tf.Variable(tf.zeros([T, p]))
-b = tf.Variable(tf.zeros([T,1]))
-
-y = tf.nn.softmax(b + tf.matmul(U,h))
-cost = -tf.reduce_sum(t_c * tf.log(y))
-
-train = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
-
-init = tf.initialize_all_variables()
-sess = tf.Session()
-sess.run(init)
-
-for i in range(1):
-    batch_t_par, batch_t_c, batch_t_ws = stochastic_batch(3)
-    feed_dict = { t_par: batch_t_par, t_c: batch_t_c, t_ws: batch_t_ws }
-    # sess.run(train, feed_dict)
-    sess.run(h, feed_dict)
-print("hello")
+D = full_softmax_classifier(q_word=50, q_par=150)
