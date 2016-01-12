@@ -1,0 +1,4 @@
+* Ideas for doc2vec improvements
+
+- Create a token for paragraphs.
+- Solve the numerical values/representations and *profit*!

@@ -8,7 +8,7 @@ import random
 stops = { '.',';',',' }        # Improve with NLTK
 pars = [nltk.word_tokenize(a.content) for a in article_db.fetch(10)]
 pars = [[w.lower() for w in p if w not in stops] for p in pars]
-words = [w for p in corpus for w in p]
+words = [w for p in pars for w in p]
 counter = collections.Counter(words) # Other data structure?
 
 # Assign an id to each word
@@ -33,10 +33,10 @@ def stochastic_batch(k_around, batch_size=1):
     t_c[word_dict[c]] = 1
 
     # Surrounding words 1-hot matrix
-    ws = [par[i] for i in par[c_pos-k_around:c_pos+k_around] if i is not c_pos]
+    ws = par[c_pos-k_around:c_pos] + par[c_pos+1:c_pos+k_around+1]
     t_ws = [[0] * (2*k_around) for _ in range(T_word)]
-    for j in range(T_word):
-        t_ws[word_dict[ws[j]], j] = 1
+    for j,i in enumerate([word_dict[w] for w in ws]):
+        t_ws[i][j] = 1
 
     return t_par, t_c, t_ws        
     
