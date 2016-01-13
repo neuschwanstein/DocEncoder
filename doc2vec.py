@@ -33,6 +33,7 @@ n = 200
 # NPLM parameters
 W = tf.Variable(tf.random_uniform([T_w, q_w], -1.0, 1.0))
 D = tf.Variable(tf.random_uniform([T_p, q_p], -1.0, 1.0))
+D_bow = tf.Variable(tf.random_uniform([T_p,q_p], -1.0, 1.0))
 
 t_cs = tf.placeholder(tf.int32, shape=[n])
 t_ps = tf.placeholder(tf.int32, shape=[n])
@@ -44,25 +45,38 @@ h_ws = tf.gather(W, t_ws)
 h_ws = tf.reduce_mean(h_ws,1)   # `mix' context words (average in this case)
 h = tf.concat(1, [h_ps,h_ws])
 
-# Softmax parameters
+# PVBOW vector
+h_bow = tf.gather(D_bow, t_ps)
+
+# Softmax parameters for PVDM movdel
 U = tf.Variable(tf.zeros([q_w+q_p,T_w]))
 b = tf.Variable(tf.zeros([T_w]))
 
-y = tf.nn.softmax(tf.matmul(h,U) + b)
-y = tf.gather(tf.transpose(y), t_cs)
-y = tf.pack([y[i,i] for i in range(n)]) # *BIG* hack.
+# Softmax paramaters for PVDBOW model
+U_bow = tf.Variable(tf.zeros([q_p,T_w]))
+b_bow = tf.Variable(tf.zeros([T_w]))
+
+y = tf.nn.softmax(tf.matmul(h,U) + b) # Perform softmax with params (U,b) from `context' h
+y = tf.gather(tf.transpose(y), t_cs)  # Evaluate the probabilities of target t_cs of each example
+y = tf.pack([y[i,i] for i in range(n)]) # n. This last line is a big hack... Todo find better sol.
+
+y_bow = tf.nn.softmax(tf.matmul(h_bow,U_bow) + b_bow)
+y_bow = tf.gather(tf.transpose(y_bow), t_cs)
+y_bow = tf.pack([y_bow[i,i] for i in range(n)])
 
 cost = -tf.reduce_sum(y)
+cost_bow = -tf.reduce_sum(y_bow)
+
 train = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
+train_bow = tf.train.GradientDescentOptimizer(0.1).minimize(cost_bow)
 
 init = tf.initialize_all_variables()
 sess = tf.Session()
 sess.run(init)
 
-keys = [t_ps, t_ws, t_cs]
-for i in range(10):
-    feed = { k: val for k,val in zip(keys,stochastic_batch(k=2,n=n)) }
-    sess.run(train, feed)
+for i in range(100):
+    feed = dict(zip([t_ps, t_ws, t_cs], stochastic_batch(k=4,n=n)))
+    sess.run([train,train_bow], feed)
 
 
 print("Hello")
