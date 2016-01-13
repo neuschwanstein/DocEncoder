@@ -118,9 +118,11 @@ def add_missing(count=25):
         article = Article(**article)
         articles.append(article)
 
-    print("Inserting...")
-    insert(articles)
-    print("Done.")
+        if i>0 and i%200 == 0:
+            print("Inserting new articles...")
+            insert(articles)
+            articles = []
+            print("Done.")
 
 def test():
     parse_and_insert(1)        
