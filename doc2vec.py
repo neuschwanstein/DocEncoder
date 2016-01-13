@@ -13,21 +13,21 @@ words = [w for p in ps for w in p]
 counter = collections.Counter(words) # Other data structure?
 
 # Assign an id to each word
-word_dict = {w: i for i,w in enumerate(counter)}
+ts = {w: i for i,w in enumerate(counter)}
 
-T_w = len(word_dict)
+T_w = len(ts)
 T_p = len(ps)
 
 def stochastic_batch(k, batch_size=200):
     n = batch_size
     t_ps = [random.randrange(T_p) for _ in range(n)]
     cs = [random.randrange(k, len(ps[t_p])-k) for t_p in t_ps]
-    t_cs = [word_dict[ps[t_p][c]] for c,t_p in zip(cs,t_ps)]
-    t_ws = [[word_dict[w] for w in ps[t_p][c-k:c]+ps[t_p][c+1:c+k+1]] for c,t_p in zip(cs,t_ps)]
+    t_cs = [ts[ps[t_p][c]] for c,t_p in zip(cs,t_ps)]
+    t_ws = [[ts[w] for w in ps[t_p][c-k:c]+ps[t_p][c+1:c+k+1]] for c,t_p in zip(cs,t_ps)]
 
     return t_ps, t_ws, t_cs
-        
-    
+
+stochastic_batch(2,5)
 
 q_w = 5
 q_p = 6
