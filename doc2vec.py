@@ -15,15 +15,15 @@ counter = collections.Counter(words) # Other data structure?
 # Assign an id to each word
 word_dict = {w: i for i,w in enumerate(counter)}
 
-T_word = len(word_dict)
-T_par = len(pars)
+T_w = len(word_dict)
+T_p = len(pars)
 
 def stochastic_batch(k_around, batch_size=1):
     # Paragraph 1-hot vector
-    p = random.randrange(T_par)
-    t_par = [0] * T_par
-    t_par[p] = 1
-    t_par = np.asarray(t_par).reshape(T_par,1)
+    p = random.randrange(T_p)
+    t_p = [0] * T_p
+    t_p[p] = 1
+    t_p = np.asarray(t_p).reshape(T_p,1)
 
     par = pars[p]
     l = len(par)
@@ -31,42 +31,94 @@ def stochastic_batch(k_around, batch_size=1):
     # Center 1-hot vector
     c_pos = random.randrange(k_around, l-k_around)
     c = par[c_pos]
-    t_c = [0] * T_word
+    t_c = [0] * T_w
     t_c[word_dict[c]] = 1
-    t_c = np.asarray(t_c).reshape(T_word,1)
+    t_c = np.asarray(t_c).reshape(T_w,1)
 
     # Surrounding words 1-hot matrix
     ws = par[c_pos-k_around:c_pos] + par[c_pos+1:c_pos+k_around+1]
-    t_ws = [[0] * (2*k_around) for _ in range(T_word)]
+    t_ws = [[0] * (2*k_around) for _ in range(T_w)]
     for j,i in enumerate([word_dict[w] for w in ws]):
         t_ws[i][j] = 1
         
     return t_par, t_c, t_ws
     
 
-# q_word = 50
-# q_par = 150
+q_w = 5
+q_p = 6
 
-def full_softmax_classifier(q_word,q_par):
+T_w = 12
+T_p = 10
 
-    t_c = tf.placeholder(tf.float32, shape=[T_word,1], name='t_c')       # 1-hot vector for central word
-    t_ws = tf.placeholder(tf.float32, shape=[T_word,None], name='t_ws') # 1-hot matrix for words
-    t_par = tf.placeholder(tf.float32, shape=[T_par,1], name='t_par')      # 1-hot vector for pars
+n = 3
+
+# NPLM parameters
+W = tf.Variable(tf.random_uniform([T_w, q_w], -1.0, 1.0))
+D = tf.Variable(tf.random_uniform([T_p, q_p], -1.0, 1.0))
+
+t_cs = tf.placeholder(tf.int32, shape=[n])
+t_ps = tf.placeholder(tf.int32, shape=[n])
+t_ws = tf.placeholder(tf.int32, shape=[n,None])
+
+# Context vector (from surrounding ws and p)
+h_ps = tf.gather(D, t_ps)
+h_ws = tf.gather(W, t_ws)
+h_ws = tf.reduce_mean(h_ws,1)   # `mix' context words (average in this case)
+h = tf.concat(1, [h_ps,h_ws])
+
+# Softmax parameters
+U = tf.Variable(tf.zeros([q_w+q_p,T_w]))
+b = tf.Variable(tf.zeros([T_w]))
+
+y = tf.nn.softmax(tf.matmul(h,U) + b)
+y = tf.gather(tf.transpose(y), t_cs)
+y = tf.pack([y[i,i] for i in range(n)]) # *BIG* hack.
+
+cost = -tf.reduce_sum(y)
+train = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
+
+init = tf.initialize_all_variables()
+sess = tf.Session()
+sess.run(init)
+
+feed_dict = { t_ps: [0,1,2], t_ws: [[1,2,3,4],[2,3,4,5],[3,4,5,6]], t_cs: [11,10,9] }
+# print("h_ps=\n",sess.run(h_ps, feed_dict))
+# print("W=",sess.run(W))
+# print("h_ws=\n",sess.run(h_ws, feed_dict))
+print('h=\n',sess.run(h, feed_dict))
+print('y=\n',sess.run(y, feed_dict))
+
+
+print("Hello")
+
+
+
+
+
+
+
+
+
+def full_softmax_classifier(q_w,q_p):
+
+    t_c = tf.placeholder(tf.float32, shape=[T_w,1], name='t_c')       # 1-hot vector for central word
+    t_ws = tf.placeholder(tf.float32, shape=[T_w,None], name='t_ws') # 1-hot matrix for words
+    t_par = tf.placeholder(tf.float32, shape=[T_p,1], name='t_par')      # 1-hot vector for pars
     
     # NPLM parameters
-    W = tf.Variable(tf.random_uniform([q_word,T_word], -1.0, 1.0))
-    D = tf.Variable(tf.random_uniform([q_par,T_par], -1.0, 1.0))
+    W = tf.Variable(tf.random_uniform([q_w,T_w], -1.0, 1.0))
+    D = tf.Variable(tf.random_uniform([q_p,T_p], -1.0, 1.0))
     
     # Context vectors 
     h_word = tf.matmul(W,t_ws)
     h_word = tf.reduce_mean(h_word,1) # Take the average of context words.
     h_par = tf.matmul(D,t_par)
-    h_par = tf.reshape(h_par,[q_par])
+    h_par = tf.reshape(h_par,[q_p])
     h = tf.concat(0,[h_word,h_par])
     
     # Softmax sizes
-    p = q_word + q_par
-    T = T_word
+    p = q_w + q_p
+    T = T_w
     
     h = tf.reshape(h,[p,1])
     
@@ -92,4 +144,4 @@ def full_softmax_classifier(q_word,q_par):
     print("Done.")
     return sess.run(D)
 
-D = full_softmax_classifier(q_word=50, q_par=150)
+# D = full_softmax_classifier(q_w=50, q_p=150)
