@@ -18,6 +18,7 @@ def stochastic_batch(k, n=200):
 
 def doc2vec(q_w, q_p, batch_size=200, db_limit=100):
     # Initialization
+    n = batch_size
     stops = { '.',';',',' }        # Improve with NLTK
     ps = [nltk.word_tokenize(a.content) for a in article_db.fetch(10)]
     ps = [[w.lower() for w in p if w not in stops] for p in ps]
