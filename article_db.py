@@ -50,7 +50,7 @@ class Fetch:
                 raise StopIteration
         return Article(*self.records.pop(0))
 
-def fetch(count=0):
+def fetch(count="ALL"):
     return Fetch(count)
 
 def missing(count=100):
