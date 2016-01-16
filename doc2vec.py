@@ -16,8 +16,9 @@ def stochastic_batch(k, n=200):
     return t_ps, t_ws, t_cs
 
 
-def doc2vec(q_w, q_p, batch_size=200, db_limit=100):
+def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
     # Initialization
+    print("Initializing data...")
     n = batch_size
     stops = { '.',';',',' }        # Improve with NLTK
     ps = [nltk.word_tokenize(a.content) for a in article_db.fetch(10)]
@@ -72,8 +73,19 @@ def doc2vec(q_w, q_p, batch_size=200, db_limit=100):
     sess = tf.Session()
     sess.run(init)
 
-    for i in range(100):
+    print("Beginning SGD operation...")
+    avg_cost = np.array([0.,0.])
+    for i in range(steps):
         feed = dict(zip([t_ps, t_ws, t_cs], stochastic_batch(k=4,n=n)))
-        sess.run([train,train_bow], feed)
+        _,_,cost_val,cost_bow_val = sess.run([train,train_bow,cost,cost_bow], feed)
+        # avg_cost += cost_val
+        # avg_cost_bow += cost_bow_val
+        avg_cost += [cost_val,cost_bow_val]
 
+        if i % 2000 == 0:
+            if i > 0:
+                avg /= [2000.,2000.]
+            print("Average losses at step %d: (%f,%f)" % (i,avg_cost[0],avg_cost[1]))
+            avg_cost = np.array([0.,0.])
+        
     print("DONE")
