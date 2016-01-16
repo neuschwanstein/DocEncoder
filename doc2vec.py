@@ -59,10 +59,12 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
 
     y = tf.nn.softmax(tf.matmul(h,U) + b) # Perform softmax with params (U,b) from `context' h
     y = tf.gather(tf.transpose(y), t_cs)  # Evaluate the probabilities of target t_cs of each example
+    y = tf.log(y)
     y = tf.mul(mask,y)                    # Mask elements off diagonal
 
     y_bow = tf.nn.softmax(tf.matmul(h_bow,U_bow) + b_bow)
     y_bow = tf.gather(tf.transpose(y_bow), t_cs)
+    y_bow = tf.log(y_bow)
     y = tf.mul(mask,y)
 
     cost = -tf.reduce_sum(y)
