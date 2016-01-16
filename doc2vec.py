@@ -5,8 +5,6 @@ import tensorflow as tf
 import random
 import numpy as np
 
-global ps,ws,ts,T_w,T_p
-
 def stochastic_batch(k, n=200):
     t_ps = [random.randrange(T_p) for _ in range(n)]
     cs = [random.randrange(k, len(ps[t_p])-k) for t_p in t_ps]
@@ -17,8 +15,10 @@ def stochastic_batch(k, n=200):
 
 
 def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
+    global ps,ws,ts,T_w,T_p
+
     # Initialization
-    print("Initializing data...")
+    print("Initializing computation variables...")
     n = batch_size
     stops = { '.',';',',' }        # Improve with NLTK
     ps = [nltk.word_tokenize(a.content) for a in article_db.fetch(10)]
@@ -51,17 +51,19 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
     U = tf.Variable(tf.zeros([q_w+q_p,T_w]))
     b = tf.Variable(tf.zeros([T_w]))
 
+    mask = tf.diag(tf.ones([n]))
+
     # Softmax paramaters for PVDBOW model
     U_bow = tf.Variable(tf.zeros([q_p,T_w]))
     b_bow = tf.Variable(tf.zeros([T_w]))
 
     y = tf.nn.softmax(tf.matmul(h,U) + b) # Perform softmax with params (U,b) from `context' h
     y = tf.gather(tf.transpose(y), t_cs)  # Evaluate the probabilities of target t_cs of each example
-    y = tf.pack([y[i,i] for i in range(n)]) # n. This last line is a big hack... Todo find better sol.
+    y = tf.mul(mask,y)                    # Mask elements off diagonal
 
     y_bow = tf.nn.softmax(tf.matmul(h_bow,U_bow) + b_bow)
     y_bow = tf.gather(tf.transpose(y_bow), t_cs)
-    y_bow = tf.pack([y_bow[i,i] for i in range(n)])
+    y = tf.mul(mask,y)
 
     cost = -tf.reduce_sum(y)
     cost_bow = -tf.reduce_sum(y_bow)
@@ -84,7 +86,7 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
 
         if i % 2000 == 0:
             if i > 0:
-                avg /= [2000.,2000.]
+                avg_cost /= [2000.,2000.]
             print("Average losses at step %d: (%f,%f)" % (i,avg_cost[0],avg_cost[1]))
             avg_cost = np.array([0.,0.])
         
