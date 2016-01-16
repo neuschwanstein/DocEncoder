@@ -65,7 +65,7 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
     y_bow = tf.nn.softmax(tf.matmul(h_bow,U_bow) + b_bow)
     y_bow = tf.gather(tf.transpose(y_bow), t_cs)
     y_bow = tf.log(y_bow)
-    y = tf.mul(mask,y)
+    y_bow = tf.mul(mask,y_bow)
 
     cost = -tf.reduce_sum(y)
     cost_bow = -tf.reduce_sum(y_bow)
