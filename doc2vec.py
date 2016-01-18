@@ -14,6 +14,13 @@ def stochastic_batch(k, n=200):
 
     return t_ps, t_ws, t_cs
 
+def stochastic_batch_bow(k, n=200):
+    t_ps = [random.randrange(T_p) for _ in range(n)]
+    max_ls = [len(ps[t_p])-2*k if len(ps[t_p]) <= 4*k else 2*k for t_p in t_ps]
+    cs = [random.sample(range(l),l) for l in max_ls]
+    # t_cs = [
+    return
+
 def initialize(k, db_limit):
     stops = { '.',';',',' }        # Improve with NLTK
     bof = ['__BOF__'] * k          # Padding tokens
@@ -29,16 +36,17 @@ def initialize(k, db_limit):
 
 def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
     global ps,ts,T_w,T_p,n
+    k = 12
 
-    ps,ts = initialize(k=4,db_limit)
+    ps,ts = initialize(k=k,db_limit)
     T_w = len(ts)
     T_p = len(ps)
 
-    # NPLM parameters
+    # Distributed Memory parameters
     W = tf.Variable(tf.random_uniform([T_w, q_w], -1.0, 1.0))
     D = tf.Variable(tf.random_uniform([T_p, q_p], -1.0, 1.0))
-    D_bow = tf.Variable(tf.random_uniform([T_p,q_p], -1.0, 1.0))
 
+    # Index placeholders
     t_cs = tf.placeholder(tf.int32, shape=[n])
     t_ps = tf.placeholder(tf.int32, shape=[n])
     t_ws = tf.placeholder(tf.int32, shape=[n,None])
@@ -49,36 +57,39 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
     h_ws = tf.reduce_mean(h_ws,1)   # `mix' context words (average in this case)
     h = tf.concat(1, [h_ps,h_ws])
 
-    # PVBOW vector
-    h_bow = tf.gather(D_bow, t_ps)
-
     # Softmax parameters for PVDM movdel
     U = tf.Variable(tf.zeros([q_w+q_p,T_w]))
     b = tf.Variable(tf.zeros([T_w]))
 
     mask = tf.diag(tf.ones([n]))
+    y = logsoftmax(tf.matmul(h,U) + b)
+    y = tf.gather(tf.transpose(y), t_cs)  # Evaluate the probabilities of target t_cs of each example
+    y = tf.mul(mask,y)                    # Mask elements off diagonal
+
+    cost = -tf.reduce_sum(y)
+    train = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
+
+    # Distributed bag of words model
+    D_bow = tf.Variable(tf.random_uniform([T_p,q_p], -1.0, 1.0))
+
+    # Index placeholders
+    t_ps_bow = tf.placeholders(tf.int32, shape=[n])
+    t_cs_bow = tf.placeholder(tf.int32, shape=[n,None]) # None bcz len(par) might be shorter
+    mask_1_bow = tf.placeholder(tf.int32, shape=[None]) # One big hack: array of one of undefined length
+    
+    # PVBOW vector
+    h_bow = tf.gather(D_bow, t_ps)
 
     # Softmax paramaters for PVDBOW model
     U_bow = tf.Variable(tf.zeros([q_p,T_w]))
     b_bow = tf.Variable(tf.zeros([T_w]))
 
-    # y = tf.nn.softmax(tf.matmul(h,U) + b) # Perform softmax with params (U,b) from `context' h
-    y = logsoftmax(tf.matmul(h,U) + b)
-    y = tf.gather(tf.transpose(y), t_cs)  # Evaluate the probabilities of target t_cs of each example
-    # y = tf.log(y)
-    y = tf.mul(mask,y)                    # Mask elements off diagonal
-
-    # y_bow = tf.nn.softmax(tf.matmul(h_bow,U_bow) + b_bow)
+    mask_bow = tf.SparseTensor(values=mask_1_bow, indices=t_cs_bow, shape=tf.shape(y_bow))
     y_bow = logsoftmax(tf.matmul(h_bow,U_bow) + b_bow)
-    y_bow = tf.gather(tf.transpose(y_bow), t_cs)
-    # y_bow = tf.log(y_bow)
-    y_bow = tf.mul(mask,y_bow)
+    y_bow = tf.mul(mask_bow,y_bow)
 
-    cost = -tf.reduce_sum(y)
-    cost_bow = -tf.reduce_sum(y_bow)
-
-    train = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
-    # train_bow = tf.train.GradientDescentOptimizer(0.1).minimize(cost_bow)
+    cost = -tf.reduce_sum(y_bow)
+    train_bow = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
 
     init = tf.initialize_all_variables()
     with tf.Session() as sess:
@@ -87,13 +98,12 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
         print("Beginning SGD operation...")
         avg_cost = np.array([0.,0.])
         for i in range(steps):
-            feed = dict(zip([t_ps, t_ws, t_cs], stochastic_batch(k=4,n=n)))
+            feed = dict(zip([t_ps,t_ws,t_cs,t_cs_bow], stochastic_batch(k=k,n=n)))
             # sess.run([train,train_bow],feed)
             sess.run(train,feed)
             cost_val = sess.run(cost,feed)
             print("Average probability %d: %f (%f)" % (i,np.exp(-cost_val/n),cost_val))
 
-            # print("New cost %d: (%f,%f)" % (i,cost_val,cost_bow_val))
             if math.isnan(cost_val):
                 raise ValueError
         
@@ -103,7 +113,7 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
 def logsoftmax(M):
     # See https://en.wikipedia.org/wiki/LogSumExp
     # LSE(v) = log(exp(v1) + ... + exp(vn))
-    # LSE(v) = v_s + log(exp(v1-vs) + ... + exp(vn - vs))
+    #        = v_s + log(exp(v1-vs) + ... + exp(vn - vs))
     # where v_s = max(v1,...,vn)
     # Do this for each column (hence the reshape to correctly broadcast)
     x_star = tf.reshape(tf.reduce_max(M,1), [n,1])
