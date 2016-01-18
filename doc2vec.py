@@ -1,3 +1,4 @@
+import math
 import collections
 import nltk
 import article_db
@@ -12,6 +13,11 @@ def stochastic_batch(k, n=200):
     t_ws = [[ts[w] for w in ps[t_p][c-k:c]+ps[t_p][c+1:c+k+1]] for c,t_p in zip(cs,t_ps)]
 
     return t_ps, t_ws, t_cs
+
+# def softmax(M):
+#     exps = tf.exp(M)
+#     summed_rows = tf.reduce_sum(exps,1)
+    
 
 
 def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
@@ -57,39 +63,40 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
     U_bow = tf.Variable(tf.zeros([q_p,T_w]))
     b_bow = tf.Variable(tf.zeros([T_w]))
 
-    y = tf.nn.softmax(tf.matmul(h,U) + b) # Perform softmax with params (U,b) from `context' h
-    y = tf.gather(tf.transpose(y), t_cs)  # Evaluate the probabilities of target t_cs of each example
-    y = tf.log(y)
-    y = tf.mul(mask,y)                    # Mask elements off diagonal
+    y1 = tf.nn.softmax(tf.matmul(h,U) + b) # Perform softmax with params (U,b) from `context' h
+    y2 = tf.gather(tf.transpose(y1), t_cs)  # Evaluate the probabilities of target t_cs of each example
+    y3 = tf.log(y2)
+    y4 = tf.mul(mask,y3)                    # Mask elements off diagonal
 
     y_bow = tf.nn.softmax(tf.matmul(h_bow,U_bow) + b_bow)
     y_bow = tf.gather(tf.transpose(y_bow), t_cs)
     y_bow = tf.log(y_bow)
     y_bow = tf.mul(mask,y_bow)
 
-    cost = -tf.reduce_sum(y)
+    cost = -tf.reduce_sum(y4)
     cost_bow = -tf.reduce_sum(y_bow)
 
     train = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
     train_bow = tf.train.GradientDescentOptimizer(0.1).minimize(cost_bow)
 
     init = tf.initialize_all_variables()
-    sess = tf.Session()
-    sess.run(init)
+    with tf.Session() as sess:
+        sess.run(init)
 
-    print("Beginning SGD operation...")
-    avg_cost = np.array([0.,0.])
-    for i in range(steps):
-        feed = dict(zip([t_ps, t_ws, t_cs], stochastic_batch(k=4,n=n)))
-        _,_,cost_val,cost_bow_val = sess.run([train,train_bow,cost,cost_bow], feed)
-        # avg_cost += cost_val
-        # avg_cost_bow += cost_bow_val
-        avg_cost += [cost_val,cost_bow_val]
+        print("Beginning SGD operation...")
+        avg_cost = np.array([0.,0.])
+        for i in range(steps):
+            feed = dict(zip([t_ps, t_ws, t_cs], stochastic_batch(k=4,n=n)))
+            _,_,cost_val,cost_bow_val = sess.run([train,train_bow,cost,cost_bow], feed)
+            avg_cost += [cost_val,cost_bow_val]
 
-        if i % 2000 == 0:
-            if i > 0:
-                avg_cost /= [2000.,2000.]
-            print("Average losses at step %d: (%f,%f)" % (i,avg_cost[0],avg_cost[1]))
-            avg_cost = np.array([0.,0.])
+            if math.isnan(avg_cost[0]) or math.isnan(avg_cost[1]):
+                raise ValueError("FUcking nan. Step %d" % i)
+
+            if i % 2000 == 0:
+                if i > 0:
+                    avg_cost /= [2000.,2000.]
+                print("Average losses at step %d: (%f,%f)" % (i,avg_cost[0],avg_cost[1]))
+                avg_cost = np.array([0.,0.])
         
     print("DONE")
