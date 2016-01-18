@@ -31,7 +31,7 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
     print("Initializing computation variables...")
     n = batch_size
     stops = { '.',';',',' }        # Improve with NLTK
-    ps = [nltk.word_tokenize(a.content) for a in article_db.fetch(10)]
+    ps = [nltk.word_tokenize(a.content) for a in article_db.fetch(db_limit)]
     ps = [[w.lower() for w in p if w not in stops] for p in ps]
     ws = [w for p in ps for w in p]
     ts = {w: i for i,w in enumerate(collections.Counter(ws))} # word -> id
@@ -91,20 +91,13 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
 
         print("Beginning SGD operation...")
         avg_cost = np.array([0.,0.])
-        feed = dict(zip([t_ps, t_ws, t_cs], stochastic_batch(k=4,n=n)))
         for i in range(steps):
-            # feed = dict(zip([t_ps, t_ws, t_cs], stochastic_batch(k=4,n=n)))
-            _,_,cost_val,cost_bow_val = sess.run([train,train_bow,cost,cost_bow], feed)
-            avg_cost += [cost_val,cost_bow_val]
+            feed = dict(zip([t_ps, t_ws, t_cs], stochastic_batch(k=4,n=n)))
+            sess.run([train,train_bow],feed)
+            cost_val,cost_bow_val = sess.run([cost,cost_bow], feed)
 
-            print("Cost at step %d: (%f,%f)" % (i,avg_cost[0],avg_cost[1]))
-            if math.isnan(avg_cost[0]) or math.isnan(avg_cost[1]):
-                raise ValueError("FUcking nan. Step %d" % i)
-
-            # if i % 2000 == 0:
-            #     if i > 0:
-            #         avg_cost /= [2000.,2000.]
-            #     print("Average losses at step %d: (%f,%f)" % (i,avg_cost[0],avg_cost[1]))
-            #     avg_cost = np.array([0.,0.])
+            print("New cost %d: (%f,%f)" % (i,cost_val,cost_bow_val))
+            if math.isnan(cost_val) or math.isnan(cost_bow_val):
+                raise ValueError
         
     print("DONE")
