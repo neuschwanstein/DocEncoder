@@ -14,28 +14,23 @@ def stochastic_batch(k, n=200):
 
     return t_ps, t_ws, t_cs
 
-def logsoftmax(M):
-    # See https://en.wikipedia.org/wiki/LogSumExp
-    # LSE(v) = log(exp(v1) + ... + exp(vn))
-    # LSE(v) = v_s + log(exp(v1-vs) + ... + exp(vn - vs))
-    # where v_s = max(v1,...,vn)
-    # Do this for each column (hence the reshape to correctly broadcast)
-    x_star = tf.reshape(tf.reduce_max(M,1), [n,1])
-    logsumexp = tf.reshape(tf.log(tf.reduce_sum(tf.exp(M-x_star),1)),[n,1]) + x_star
-    return M - logsumexp
-
-def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
-    global ps,ws,ts,T_w,T_p,n
-
-    # Initialization
-    print("Initializing computation variables...")
-    n = batch_size
+def initialize(k, db_limit):
     stops = { '.',';',',' }        # Improve with NLTK
+    bof = ['__BOF__'] * k          # Padding tokens
+    eof = ['__EOF__'] * k
+    
     ps = [nltk.word_tokenize(a.content) for a in article_db.fetch(db_limit)]
-    ps = [[w.lower() for w in p if w not in stops] for p in ps]
+    ps = [bof + [w.lower() for w in p if w not in stops] + eof
+          for p in ps if len(p)]
     ws = [w for p in ps for w in p]
     ts = {w: i for i,w in enumerate(collections.Counter(ws))} # word -> id
 
+    return ps,ts
+
+def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
+    global ps,ts,T_w,T_p,n
+
+    ps,ts = initialize(k=4,db_limit)
     T_w = len(ts)
     T_p = len(ps)
 
@@ -83,7 +78,7 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
     cost_bow = -tf.reduce_sum(y_bow)
 
     train = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
-    train_bow = tf.train.GradientDescentOptimizer(0.1).minimize(cost_bow)
+    # train_bow = tf.train.GradientDescentOptimizer(0.1).minimize(cost_bow)
 
     init = tf.initialize_all_variables()
     with tf.Session() as sess:
@@ -93,11 +88,24 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
         avg_cost = np.array([0.,0.])
         for i in range(steps):
             feed = dict(zip([t_ps, t_ws, t_cs], stochastic_batch(k=4,n=n)))
-            sess.run([train,train_bow],feed)
-            cost_val,cost_bow_val = sess.run([cost,cost_bow], feed)
+            # sess.run([train,train_bow],feed)
+            sess.run(train,feed)
+            cost_val = sess.run(cost,feed)
+            print("Average probability %d: %f (%f)" % (i,np.exp(-cost_val/n),cost_val))
 
-            print("New cost %d: (%f,%f)" % (i,cost_val,cost_bow_val))
-            if math.isnan(cost_val) or math.isnan(cost_bow_val):
+            # print("New cost %d: (%f,%f)" % (i,cost_val,cost_bow_val))
+            if math.isnan(cost_val):
                 raise ValueError
         
     print("DONE")
+
+
+def logsoftmax(M):
+    # See https://en.wikipedia.org/wiki/LogSumExp
+    # LSE(v) = log(exp(v1) + ... + exp(vn))
+    # LSE(v) = v_s + log(exp(v1-vs) + ... + exp(vn - vs))
+    # where v_s = max(v1,...,vn)
+    # Do this for each column (hence the reshape to correctly broadcast)
+    x_star = tf.reshape(tf.reduce_max(M,1), [n,1])
+    logsumexp = tf.reshape(tf.log(tf.reduce_sum(tf.exp(M-x_star),1)),[n,1]) + x_star
+    return M - logsumexp    
