@@ -1,25 +1,32 @@
 import math
 import collections
-import nltk
-import article_db
-import tensorflow as tf
 import random
+
+import nltk
+import tensorflow as tf
 import numpy as np
+from itertools import groupby
+from more_itertools import unique_everseen
+
+import article_db
+
 
 def stochastic_batch(k, n=200):
     t_ps = [random.randrange(T_p) for _ in range(n)]
     cs = [random.randrange(k, len(ps[t_p])-k) for t_p in t_ps]
     t_cs = [ts[ps[t_p][c]] for c,t_p in zip(cs,t_ps)]
     t_ws = [[ts[w] for w in ps[t_p][c-k:c]+ps[t_p][c+1:c+k+1]] for c,t_p in zip(cs,t_ps)]
-
     return t_ps, t_ws, t_cs
 
 def stochastic_batch_bow(k, n=200):
     t_ps = [random.randrange(T_p) for _ in range(n)]
     max_ls = [len(ps[t_p])-2*k if len(ps[t_p]) <= 4*k else 2*k for t_p in t_ps]
-    cs = [random.sample(range(l),l) for l in max_ls]
-    # t_cs = [
-    return
+    css = [[random.randrange(k,l) for _ in range(2*k)] for l in max_ls]
+    t_css = [[ts[ps[t_p][c]] for c in cs] for cs,t_p in zip(css,t_ps)]
+    t_css = [sorted(t_cs) for t_cs in t_css]
+    mask = [[len(list(g)) for _,g in groupby(t_cs)] for t_cs in t_css]
+    t_css = [unique_everseen(t_cs) for t_cs in t_css]
+    return t_ps,t_cs
 
 def initialize(k, db_limit):
     stops = { '.',';',',' }        # Improve with NLTK
@@ -31,10 +38,9 @@ def initialize(k, db_limit):
           for p in ps if len(p)]
     ws = [w for p in ps for w in p]
     ts = {w: i for i,w in enumerate(collections.Counter(ws))} # word -> id
-
     return ps,ts
 
-def doc2vec(q_w, q_p, batch_size=200, steps=10000, db_limit=100):
+def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
     global ps,ts,T_w,T_p,n
     k = 12
 
