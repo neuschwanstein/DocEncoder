@@ -44,8 +44,8 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
     y = tf.gather(tf.transpose(y), t_cs)  # Evaluate the probabilities of target t_cs of each example
     y = tf.mul(mask,y)                    # Mask elements off diagonal
 
-    cost = -tf.reduce_sum(y)
-    train = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
+    cost_dmm = -tf.reduce_sum(y)
+    train_dmm = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
 
     # Distributed bag of words model
     D_bow = tf.Variable(tf.random_uniform([T_p,q_p], -1.0, 1.0))
@@ -66,7 +66,7 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
     y_bow = logsoftmax(tf.matmul(h_bow,U_bow) + b_bow)
     y_bow = tf.mul(mask_bow,y_bow)
 
-    cost = -tf.reduce_sum(y_bow)
+    cost_bow = -tf.reduce_sum(y_bow)
     train_bow = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
 
     init = tf.initialize_all_variables()
@@ -74,15 +74,21 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
         sess.run(init)
 
         print("Beginning SGD operation...")
-        avg_cost = np.array([0.,0.])
         for i in range(steps):
-            feed = dict(zip([t_ps,t_ws,t_cs,t_cs_bow], stochastic_batch(k=k,n=n)))
-            # sess.run([train,train_bow],feed)
-            sess.run(train,feed)
-            cost_val = sess.run(cost,feed)
-            print("Average probability %d: %f (%f)" % (i,np.exp(-cost_val/n),cost_val))
+            # PVDM training
+            feed_dmm = dict(zip(
+                [t_ps,t_ws,t_cs,t_cs_bow], stochastic_batch_dmm(k,n)))
+            new_cost_dmm,_ = sess.run([cost_dmm,train_dmm],feed_dmm)
+            
+            # BOW Training
+            feed_bow = dict(zip(
+                [t_ps_bow,mask_1_bow,t_cs_bow], stochastic_batch_bow(k,n)))
+            new_cost_bow,_ = sess.run([cost_bow,train_bow],feed_bow)
+            
+            # print("Average probability %d: %f (%f)" % (i,np.exp(-cost_val/n),cost_val))
+            print("New costs %d: %f,%f" % (i, new_cost_dmm, new_cost_bow))
 
-            if math.isnan(cost_val):
+            if math.isnan(new_cost_dmm) or math.isnan(new_cost_bow):
                 raise ValueError
         
     print("DONE")
@@ -100,7 +106,7 @@ def initialize(k, db_limit):
     ts = {w: i for i,w in enumerate(collections.Counter(ws))} # word -> id
     return ps,ts
 
-def stochastic_batch(k, n=200):
+def stochastic_batch_dmm(k, n=200):
     t_ps = [random.randrange(T_p) for _ in range(n)]
     cs = [random.randrange(k, len(ps[t_p])-k) for t_p in t_ps]
     t_cs = [ts[ps[t_p][c]] for c,t_p in zip(cs,t_ps)]
