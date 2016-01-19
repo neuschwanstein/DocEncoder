@@ -19,14 +19,20 @@ def stochastic_batch(k, n=200):
     return t_ps, t_ws, t_cs
 
 def stochastic_batch_bow(k, n=200):
+    '''Returns 2k examples (possibly with replacement) for each of the n paragraphs.  Each of
+    these 2k results are then sorted and `merged'. The number of merged values are then
+    kept in the mask value. t_css assign for each paragraph of t_ps a list of target
+    words.
+
+    '''
     t_ps = [random.randrange(T_p) for _ in range(n)]
-    max_ls = [len(ps[t_p])-2*k if len(ps[t_p]) <= 4*k else 2*k for t_p in t_ps]
-    css = [[random.randrange(k,l) for _ in range(2*k)] for l in max_ls]
+    max_ls = [len(ps[t_p])-2*k if len(ps[t_p]) >= 4*k else 2*k for t_p in t_ps]
+    css = [[random.randrange(k,l+k) for _ in range(2*k)] for l in max_ls]
     t_css = [[ts[ps[t_p][c]] for c in cs] for cs,t_p in zip(css,t_ps)]
-    t_css = [sorted(t_cs) for t_cs in t_css]
-    mask = [[len(list(g)) for _,g in groupby(t_cs)] for t_cs in t_css]
-    t_css = [unique_everseen(t_cs) for t_cs in t_css]
-    return t_ps,t_cs
+    counters = [collections.Counter(sorted(t_cs)) for t_cs in t_css]
+    mask = [list(counter.keys()) for counter in counters]
+    t_css = [list(counter.values()) for counter in counters]
+    return t_ps,mask,t_css
 
 def initialize(k, db_limit):
     stops = { '.',';',',' }        # Improve with NLTK
@@ -42,11 +48,13 @@ def initialize(k, db_limit):
 
 def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
     global ps,ts,T_w,T_p,n
-    k = 12
+    k = 5
 
-    ps,ts = initialize(k=k,db_limit)
+    ps,ts = initialize(k,db_limit)
     T_w = len(ts)
     T_p = len(ps)
+
+    feed_bow = stochastic_batch_bow(k,n=1)
 
     # Distributed Memory parameters
     W = tf.Variable(tf.random_uniform([T_w, q_w], -1.0, 1.0))
@@ -79,7 +87,7 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
     D_bow = tf.Variable(tf.random_uniform([T_p,q_p], -1.0, 1.0))
 
     # Index placeholders
-    t_ps_bow = tf.placeholders(tf.int32, shape=[n])
+    t_ps_bow = tf.placeholder(tf.int32, shape=[n])
     t_cs_bow = tf.placeholder(tf.int32, shape=[n,None]) # None bcz len(par) might be shorter
     mask_1_bow = tf.placeholder(tf.int32, shape=[None]) # One big hack: array of one of undefined length
     
@@ -117,11 +125,12 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
 
 
 def logsoftmax(M):
-    # See https://en.wikipedia.org/wiki/LogSumExp
-    # LSE(v) = log(exp(v1) + ... + exp(vn))
-    #        = v_s + log(exp(v1-vs) + ... + exp(vn - vs))
-    # where v_s = max(v1,...,vn)
-    # Do this for each column (hence the reshape to correctly broadcast)
+    '''LSE(v) = log(exp(v1) + ... + exp(vn))
+              = v_s + log(exp(v1-vs) + ... + exp(vn - vs))
+    where v_s = max(v1,...,vn)
+    Do this for each column (hence the reshape to correctly broadcast)
+
+    '''
     x_star = tf.reshape(tf.reduce_max(M,1), [n,1])
     logsumexp = tf.reshape(tf.log(tf.reduce_sum(tf.exp(M-x_star),1)),[n,1]) + x_star
     return M - logsumexp    
