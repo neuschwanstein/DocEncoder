@@ -5,9 +5,6 @@ import urllib.request
 from bs4 import BeautifulSoup
 import dateutil.parser
 import re
-# from contextlib import contextmanager
-# @contextmanager
-# def 
 
 Article = namedtuple('Article', 'feedly_id location date title content')
 Reuters = namedtuple('Reuters','feedly_id url')
@@ -16,19 +13,19 @@ missing_reuters_query = """
 SELECT A.feedly_id,A.href FROM
 reuters_usmarkets A 
 LEFT JOIN
-articles_usmarkets B
+articles B
 ON A.feedly_id = B.feedly_id
 WHERE B.feedly_id IS NULL;
 """
 
 insert_article_query = """
-INSERT INTO articles_usmarkets
+INSERT INTO articles
 (feedly_id,location,date,title,content)
 VALUES (%s,%s,%s,%s,%s)
 """
 
 select_article_query = """
-SELECT {} FROM articles_usmarkets LIMIT {}""".format(','.join(Article._fields), "{}")
+SELECT {} FROM articles LIMIT {}""".format(','.join(Article._fields), "{}")
 
 conn = psycopg2.connect("dbname=TBM")
 cur = conn.cursor()

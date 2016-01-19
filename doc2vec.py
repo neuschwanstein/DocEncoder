@@ -8,7 +8,7 @@ import numpy as np
 from itertools import groupby
 from more_itertools import unique_everseen
 
-import article_db
+import articles
 
 def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
     global ps,ts,T_w,T_p,n
@@ -93,13 +93,12 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
         
     print("DONE")
 
-
 def initialize(k, db_limit):
     stops = { '.',';',',' }        # Improve with NLTK
     bof = ['__BOF__'] * k          # Padding tokens
     eof = ['__EOF__'] * k
     
-    ps = [nltk.word_tokenize(a.content) for a in article_db.fetch(db_limit)]
+    ps = [nltk.word_tokenize(a.content) for a in articles.fetch(db_limit)]
     ps = [bof + [w.lower() for w in p if w not in stops] + eof
           for p in ps if len(p)]
     ws = [w for p in ps for w in p]
