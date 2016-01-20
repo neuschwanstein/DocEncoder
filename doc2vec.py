@@ -21,57 +21,60 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
     feed_bow = stochastic_batch_bow(k,n=1)
 
     # Distributed Memory parameters
-    W = tf.Variable(tf.random_uniform([T_w, q_w], -1.0, 1.0))
-    D = tf.Variable(tf.random_uniform([T_p, q_p], -1.0, 1.0))
+    W_dmm = tf.Variable(tf.random_uniform([T_w, q_w], -1.0, 1.0),name='W_dmm')
+    D_dmm = tf.Variable(tf.random_uniform([T_p, q_p], -1.0, 1.0),name='D_dmm')
 
     # Index placeholders
-    t_cs = tf.placeholder(tf.int32, shape=[n])
-    t_ps = tf.placeholder(tf.int32, shape=[n])
-    t_ws = tf.placeholder(tf.int32, shape=[n,None])
+    t_cs_dmm = tf.placeholder(tf.int32, shape=[n])
+    t_ps_dmm = tf.placeholder(tf.int32, shape=[n])
+    t_ws_dmm = tf.placeholder(tf.int32, shape=[n,None])
 
     # Context vector (from surrounding ws and p)
-    h_ps = tf.gather(D, t_ps)
-    h_ws = tf.gather(W, t_ws)
+    h_ps = tf.gather(D_dmm, t_ps_dmm)
+    h_ws = tf.gather(W_dmm, t_ws_dmm)
     h_ws = tf.reduce_mean(h_ws,1)   # `mix' context words (average in this case)
-    h = tf.concat(1, [h_ps,h_ws])
+    h_dmm = tf.concat(1, [h_ps,h_ws])
 
     # Softmax parameters for PVDM movdel
-    U = tf.Variable(tf.zeros([q_w+q_p,T_w]))
-    b = tf.Variable(tf.zeros([T_w]))
+    U_dmm = tf.Variable(tf.zeros([q_w+q_p,T_w]),name='U_dmm')
+    b_dmm = tf.Variable(tf.zeros([T_w]),name='b_dmm')
 
-    mask = tf.diag(tf.ones([n]))
-    y = logsoftmax(tf.matmul(h,U) + b)
-    y = tf.gather(tf.transpose(y), t_cs)  # Evaluate the probabilities of target t_cs of each example
-    y = tf.mul(mask,y)                    # Mask elements off diagonal
+    mask_dmm = tf.diag(tf.ones([n]))
+    y_dmm = logsoftmax(tf.matmul(h_dmm,U_dmm) + b_dmm)
+    y_dmm = tf.gather(tf.transpose(y_dmm), t_cs_dmm)  # Evaluate the probabilities of target
+                                                  # t_cs of each example (use sparse tensor?)
+    y_dmm = tf.mul(mask_dmm,y_dmm)                # Mask elements off diagonal
 
-    cost_dmm = -tf.reduce_sum(y)
-    train_dmm = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
+    cost_dmm = -tf.reduce_sum(y_dmm)
+    train_dmm = tf.train.GradientDescentOptimizer(0.1).minimize(cost_dmm)
 
-    # Distributed bag of words model
+    # Distributed bag of words
     D_bow = tf.Variable(tf.random_uniform([T_p,q_p], -1.0, 1.0))
 
     # Index placeholders
     t_ps_bow = tf.placeholder(tf.int32, shape=[n])
     t_cs_bow = tf.placeholder(tf.int32, shape=[n,None]) # None bcz len(par) might be shorter
-    mask_1_bow = tf.placeholder(tf.int32, shape=[None]) # One big hack: array of one of undefined length
+    mask_1_bow = tf.placeholder(tf.float32, shape=[None]) # One big hack: array of one of undefined length
     
     # PVBOW vector
-    h_bow = tf.gather(D_bow, t_ps)
+    h_bow = tf.gather(D_bow, t_ps_bow)
 
     # Softmax paramaters for PVDBOW model
     U_bow = tf.Variable(tf.zeros([q_p,T_w]))
     b_bow = tf.Variable(tf.zeros([T_w]))
 
-    mask_bow = tf.SparseTensor(values=mask_1_bow, indices=t_cs_bow, shape=tf.shape(y_bow))
     y_bow = logsoftmax(tf.matmul(h_bow,U_bow) + b_bow)
-    y_bow = tf.mul(mask_bow,y_bow)
+    mask_bow = tf.SparseTensor(values=mask_1_bow, indices=t_cs_bow, shape=tf.shape(y_bow))
+    y_bow = tf.mul(tf.sparse_tensor_to_dense(mask_bow,0.0),y_bow)
 
     cost_bow = -tf.reduce_sum(y_bow)
-    train_bow = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
+    train_bow = tf.train.GradientDescentOptimizer(0.1).minimize(cost_bow)
 
     init = tf.initialize_all_variables()
+    saver = tf.train.Saver()
     with tf.Session() as sess:
         sess.run(init)
+        saver.save(sess,'./doc2vec.ckpt')
 
         print("Beginning SGD operation...")
         for i in range(steps):
