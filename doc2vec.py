@@ -12,7 +12,6 @@ import articles
 
 def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
     global ps,ts,T_w,T_p,n
-    k = 5
 
     ps,ts = initialize(k,db_limit)
     T_w = len(ts)
