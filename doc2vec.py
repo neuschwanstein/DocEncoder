@@ -52,21 +52,18 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
 
     # Index placeholders
     t_ps_bow = tf.placeholder(tf.int32, shape=[n])
-    t_cs_bow = tf.placeholder(tf.int32, shape=[n,None]) # None bcz len(par) might be shorter
-    mask_1_bow = tf.placeholder(tf.float32, shape=[None]) # One big hack: array of one of undefined length
+    t_css_bow = tf.placeholder(tf.int32, shape=[n,2*k]) # None bcz len(par) might be shorter
     
     # PVBOW vector
-    h_bow = tf.gather(D_bow, t_ps_bow)
+    h_bow = tf.gather(D_bow, t_ps_bow) # [n,q_p]
 
     # Softmax paramaters for PVDBOW model
     U_bow = tf.Variable(tf.zeros([q_p,T_w]))
     b_bow = tf.Variable(tf.zeros([T_w]))
 
-    y_bow = logsoftmax(tf.matmul(h_bow,U_bow) + b_bow)
-    mask_bow = tf.SparseTensor(values=mask_1_bow, indices=t_cs_bow, shape=tf.shape(y_bow))
-    y_bow = tf.mul(tf.sparse_tensor_to_dense(mask_bow,0.0),y_bow)
-
-    cost_bow = -tf.reduce_sum(y_bow)
+    num_sampled = 64            # How much??
+    cost_bow = tf.reduce_mean(
+        tf.nn.sampled_softmax_loss(U_bow,b_bow,h_bow,t_css_bow,num_sampled,T_w,2*k))
     train_bow = tf.train.GradientDescentOptimizer(0.1).minimize(cost_bow)
 
     init = tf.initialize_all_variables()
@@ -84,7 +81,7 @@ def doc2vec(q_w, q_p, batch_size=200, steps=10000, k=12, db_limit=100):
             
             # BOW Training
             feed_bow = dict(zip(
-                [t_ps_bow,mask_1_bow,t_cs_bow], stochastic_batch_bow(k,n)))
+                [t_ps_bow,t_css_bow], stochastic_batch_bow(k,n)))
             new_cost_bow,_ = sess.run([cost_bow,train_bow],feed_bow)
             
             # print("Average probability %d: %f (%f)" % (i,np.exp(-cost_val/n),cost_val))
@@ -125,10 +122,11 @@ def stochastic_batch_bow(k, n=200):
     max_ls = [len(ps[t_p])-2*k if len(ps[t_p]) >= 4*k else 2*k for t_p in t_ps]
     css = [[random.randrange(k,l+k) for _ in range(2*k)] for l in max_ls]
     t_css = [[ts[ps[t_p][c]] for c in cs] for cs,t_p in zip(css,t_ps)]
-    counters = [collections.Counter(sorted(t_cs)) for t_cs in t_css]
-    mask = [list(counter.keys()) for counter in counters]
-    t_css = [list(counter.values()) for counter in counters]
-    return t_ps,mask,t_css
+    return t_ps,t_css
+    # counters = [collections.Counter(sorted(t_cs)) for t_cs in t_css]
+    # mask = [list(counter.keys()) for counter in counters]
+    # t_css = [list(counter.values()) for counter in counters]
+    # return t_ps,mask,t_css
 
 def logsoftmax(M):
     '''LSE(v) = log(exp(v1) + ... + exp(vn))
