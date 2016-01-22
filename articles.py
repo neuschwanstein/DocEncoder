@@ -27,6 +27,10 @@ VALUES (%s,%s,%s,%s,%s)
 select_article_query = """
 SELECT {} FROM articles LIMIT {}""".format(','.join(Article._fields), "{}")
 
+delete_reuters_query = """
+DELETE FROM reuters_usmarkets
+WHERE feedly_id='{}'"""
+
 conn = psycopg2.connect("dbname=TBM")
 cur = conn.cursor()
 
@@ -50,7 +54,7 @@ class Fetch:
 def fetch(count="ALL"):
     return Fetch(count)
 
-def missing(count=100):
+def get_missing(count=100):
     cur.execute(missing_reuters_query)
     records = cur.fetchmany(count)
     return [Reuters._make(record) for record in records]
@@ -63,6 +67,11 @@ def insert(articles):
         cur.execute(insert_article_query,
                     (article.feedly_id, article.location,
                      article.date, article.title, article.content))
+    conn.commit()
+
+def delete(article):
+    query = delete_reuters_query.format(article.feedly_id)
+    cur.execute(query)
     conn.commit()
 
 def parse(url):
@@ -101,14 +110,18 @@ def parse(url):
     return { 'location': location, 'date': date, 'title': title, 'content': article_text }
 
 def add_missing(count=25):
-    global missing
-    missings = missing(count)
+    '''TODO: Add threaded process. Goes and parse missing Reuters articles, and then adds
+    their content to the database.
+
+    '''
+    missings = get_missing(count)
     articles = []
     for i,missing in enumerate(missings):
         print("Parsing {} out of {}".format(i+1,count))
         try:
             article = parse(missing.url)
         except:
+            delete(missing)
             print('Error! {}'.format(missing.url))
             continue
         article['feedly_id'] = missing.feedly_id
@@ -120,9 +133,6 @@ def add_missing(count=25):
             insert(articles)
             articles = []
             print("Done.")
-
-def test():
-    parse_and_insert(1)        
 
 def close():
     conn.close()
